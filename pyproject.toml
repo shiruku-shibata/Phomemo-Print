@@ -1,0 +1,26 @@
+[project]
+name = "phomemo-print"
+version = "0.1.0"
+description = "Print images and text to a Phomemo M02 thermal printer over BLE from macOS"
+requires-python = ">=3.11"
+dependencies = [
+    "bleak>=0.22",
+    "Pillow>=10.0",
+    "click>=8.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+phomemo = "phomemo.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
