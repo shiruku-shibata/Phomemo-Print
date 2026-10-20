@@ -110,7 +110,7 @@ def scan(timeout: float, show_all: bool, name: str) -> None:
     if not results:
         click.echo(ble.PERMISSION_HINT, err=True)
         sys.exit(EXIT_NOT_FOUND)
-    hits = [r for r in results if r.name.startswith(name) or r.looks_like_phomemo]
+    hits = [r for r in results if r.matches(name)]
     shown = results if show_all else hits
     for r in shown:
         mark = "*" if r in hits else " "

@@ -5,3 +5,6 @@ __pycache__/
 tests/output/
 spool/
 godot/.godot/
+logs/
+.DS_Store
+*.command

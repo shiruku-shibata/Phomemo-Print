@@ -18,6 +18,12 @@ log = logging.getLogger(__name__)
 # GATT layout from CLAUDE.md "既知の情報" -- verify with tools/explore_gatt.py
 SERVICE_UUID = "0000ff00-0000-1000-8000-00805f9b34fb"
 WRITE_CHAR_UUID = "0000ff02-0000-1000-8000-00805f9b34fb"
+# The M02 does not advertise ff00; it advertises af30 (+ 1812 HID).
+# Device log 2026-10-06, docs/device-notes.md
+ADVERTISED_UUIDS = (
+    SERVICE_UUID,
+    "0000af30-0000-1000-8000-00805f9b34fb",
+)
 NOTIFY_CHAR_UUIDS = (
     "0000ff01-0000-1000-8000-00805f9b34fb",
     "0000ff03-0000-1000-8000-00805f9b34fb",
@@ -54,7 +60,15 @@ class ScanResult:
 
     @property
     def looks_like_phomemo(self) -> bool:
-        return SERVICE_UUID in self.service_uuids
+        return any(u in self.service_uuids for u in ADVERTISED_UUIDS)
+
+    def matches(self, name_prefix: str) -> bool:
+        return name_matches(self.name, name_prefix) or self.looks_like_phomemo
+
+
+def name_matches(name: str, name_prefix: str) -> bool:
+    """Name contains `name_prefix` (the M02 advertises as e.g. "Mr.in_M02")."""
+    return bool(name_prefix) and name_prefix.lower() in name.lower()
 
 
 async def scan(timeout: float = 5.0) -> list[ScanResult]:
@@ -70,12 +84,13 @@ async def scan(timeout: float = 5.0) -> list[ScanResult]:
 
 
 async def find_printer(name_prefix: str = "M02", timeout: float = 10.0) -> BLEDevice:
-    """First device whose name starts with `name_prefix` or advertises ff00."""
+    """First device whose name contains `name_prefix` or advertises a Phomemo UUID."""
     def match(dev: BLEDevice, adv) -> bool:
         name = adv.local_name or dev.name or ""
-        if name_prefix and name.startswith(name_prefix):
+        if name_matches(name, name_prefix):
             return True
-        return SERVICE_UUID in [u.lower() for u in adv.service_uuids]
+        uuids = [u.lower() for u in adv.service_uuids]
+        return any(u in uuids for u in ADVERTISED_UUIDS)
 
     device = await BleakScanner.find_device_by_filter(match, timeout=timeout)
     if device is not None:
@@ -86,7 +101,7 @@ async def find_printer(name_prefix: str = "M02", timeout: float = 10.0) -> BLEDe
     if not others:
         raise PrinterNotFound(PERMISSION_HINT)
     raise PrinterNotFound(
-        f"名前が {name_prefix!r} で始まるプリンターが見つかりません "
+        f"名前に {name_prefix!r} を含むプリンターが見つかりません "
         f"（周囲の BLE デバイス {len(others)} 台）。電源と距離を確認し、"
         "`phomemo scan --all` で広告名を確認してください。"
     )
@@ -118,7 +133,8 @@ async def send_with_client(client: BleakClient, payload: bytes, chunk: int | Non
     """Like send() but on an already-connected client (used by the print queue)."""
     subscribed = []
     for uuid in NOTIFY_CHAR_UUIDS:
-        if client.services.get_characteristic(uuid) is None:
+        char = client.services.get_characteristic(uuid)
+        if char is None or not {"notify", "indicate"} & set(char.properties):
             continue
         try:
             await client.start_notify(uuid, _on_notify)
